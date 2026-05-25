@@ -103,9 +103,13 @@ func (r *postgresSubscriptionRepository) GetPricesSum(ctx context.Context, userI
 	query := `
 SELECT price, start_date, end_date
 FROM public.subscriptions
-WHERE user_id = @userID AND service_name = @serviceName AND start_date BETWEEN @fromDate AND @toDate`
-	totalSum := 0
-
+WHERE user_id = @userID AND service_name = @serviceName 
+	AND (
+		start_date BETWEEN @fromDate AND @toDate 
+		OR 
+		end_date BETWEEN @fromDate AND @toDate
+	)
+`
 	args := pgx.NamedArgs{"userID": userID, "serviceName": serviceName, "fromDate": from, "toDate": to}
 	rows, err := r.pool.Query(
 		ctx,
@@ -116,6 +120,7 @@ WHERE user_id = @userID AND service_name = @serviceName AND start_date BETWEEN @
 		return 0, r.checkErr(err)
 	}
 	defer rows.Close()
+	totalSum := 0
 	for rows.Next() {
 		var (
 			price     int
