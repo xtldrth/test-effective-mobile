@@ -1,0 +1,23 @@
+services:
+  app:
+    build:
+      context: .
+    depends_on:
+      - db
+    environment:
+      DB_CONN_STRING: "postgres://postgres:postgres@db:5432/postgres"
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: "postgres"
+    ports:
+      - "5527:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
