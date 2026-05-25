@@ -7,10 +7,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/xtldrth/test-efmov-go/internal"
-	"github.com/xtldrth/test-efmov-go/internal/config"
+	"github.com/xtldrth/test-effective-mobile/internal"
+	"github.com/xtldrth/test-effective-mobile/internal/config"
 )
 
 func main() {
@@ -25,7 +24,7 @@ func main() {
 	} else {
 		cfg = config.MustParseConfig(*configPathPtr)
 	}
-	app, err := internal.NewApp(cfg, 10*time.Second, logger.WithGroup("App"))
+	app, err := internal.NewApp(cfg, logger.WithGroup("App"))
 	if err != nil {
 		logger.Error("new app", slog.String("error", err.Error()))
 		os.Exit(1)

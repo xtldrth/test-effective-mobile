@@ -30,7 +30,7 @@ func getStatusCode(err error) int {
 	var errNotFound ErrNotFound
 	switch {
 	case errors.As(err, &errValidation):
-		return http.StatusBadRequest
+		return http.StatusUnprocessableEntity
 	case errors.As(err, &errNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, ErrInternal):
@@ -48,9 +48,21 @@ func parseUserID(r *http.Request) (uuid.UUID, error) {
 	return uuid.Parse(strID)
 }
 
+func (h SubscriptionsHandler) parseSubscriptionIDFromPath(r *http.Request) (uuid.UUID, error) {
+	strID := r.PathValue("id")
+	id, err := uuid.Parse(strID)
+	if err != nil {
+		return uuid.UUID{}, err
+	}
+	return id, nil
+}
+
 func (h SubscriptionsHandler) response(w http.ResponseWriter, obj any, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
+	if obj == nil {
+		return
+	}
 	if err := json.NewEncoder(w).Encode(obj); err != nil {
 		h.Logger.Error("json encode", slog.String("error", err.Error()))
 	}
@@ -60,10 +72,9 @@ func (h SubscriptionsHandler) errorResponse(w http.ResponseWriter, message strin
 }
 
 func (h SubscriptionsHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	strID := r.PathValue("id")
-	id, err := uuid.Parse(strID)
+	id, err := h.parseSubscriptionIDFromPath(r)
 	if err != nil {
-		h.errorResponse(w, fmt.Errorf("invalid user id in path: %w", err).Error(), http.StatusBadRequest)
+		h.errorResponse(w, fmt.Errorf("invalid subscription id in path: %w", err).Error(), http.StatusUnprocessableEntity)
 		return
 	}
 	sub, err := h.Service.GetByID(r.Context(), id)
@@ -76,7 +87,7 @@ func (h SubscriptionsHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 func (h SubscriptionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	userID, err := parseUserID(r)
 	if err != nil {
-		h.errorResponse(w, fmt.Errorf("invalid user id: %w", err).Error(), http.StatusBadRequest)
+		h.errorResponse(w, fmt.Errorf("invalid user id: %w", err).Error(), http.StatusUnprocessableEntity)
 		return
 	}
 	queries := r.URL.Query()
@@ -110,7 +121,7 @@ func (h SubscriptionsHandler) GetPricesSum(w http.ResponseWriter, r *http.Reques
 	queries := r.URL.Query()
 	userID, err := parseUserID(r)
 	if err != nil {
-		h.errorResponse(w, fmt.Errorf("invalid user id: %w", err).Error(), http.StatusBadRequest)
+		h.errorResponse(w, fmt.Errorf("invalid user id: %w", err).Error(), http.StatusUnprocessableEntity)
 		return
 	}
 	serviceName := queries.Get("service_name")
@@ -120,12 +131,12 @@ func (h SubscriptionsHandler) GetPricesSum(w http.ResponseWriter, r *http.Reques
 	}
 	strFromDate := queries.Get("from")
 	if strFromDate == "" {
-		h.errorResponse(w, "from date should be provided", http.StatusBadRequest)
+		h.errorResponse(w, "`from` date should be provided", http.StatusBadRequest)
 		return
 	}
 	fromDate, err := ParseDate(strFromDate)
 	if err != nil {
-		h.errorResponse(w, fmt.Errorf("date parse: %w", err).Error(), http.StatusBadRequest)
+		h.errorResponse(w, fmt.Errorf("parsing `from` date: %w", err).Error(), http.StatusUnprocessableEntity)
 		return
 	}
 	var toDate time.Time
@@ -135,7 +146,7 @@ func (h SubscriptionsHandler) GetPricesSum(w http.ResponseWriter, r *http.Reques
 	} else {
 		toDate, err = ParseDate(strToDate)
 		if err != nil {
-			h.errorResponse(w, fmt.Errorf("date parse: %w", err).Error(), http.StatusBadRequest)
+			h.errorResponse(w, fmt.Errorf("parsing `to` date: %w", err).Error(), http.StatusUnprocessableEntity)
 			return
 		}
 	}
@@ -144,12 +155,16 @@ func (h SubscriptionsHandler) GetPricesSum(w http.ResponseWriter, r *http.Reques
 		h.errorResponse(w, err.Error(), getStatusCode(err))
 		return
 	}
-	h.response(w, R{"total_spent": sum}, http.StatusOK)
+	h.response(w, R{
+		"service_name": serviceName,
+		"user_id":      userID,
+		"total_spent":  sum,
+	}, http.StatusOK)
 }
 func (h SubscriptionsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var subscriptionCreate SubscriptionCreateDTO
 	if err := json.NewDecoder(r.Body).Decode(&subscriptionCreate); err != nil {
-		h.errorResponse(w, fmt.Errorf("decode body: %w", err).Error(), http.StatusBadRequest)
+		h.errorResponse(w, fmt.Errorf("decode json: %w", err).Error(), http.StatusUnprocessableEntity)
 		return
 	}
 	subscription, err := h.Service.Create(r.Context(), subscriptionCreate)
@@ -157,13 +172,35 @@ func (h SubscriptionsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.errorResponse(w, err.Error(), getStatusCode(err))
 		return
 	}
-	h.response(w, SubscriptionToResponse(subscription), http.StatusCreated)
+	h.response(w, R{"subscription": SubscriptionToResponse(subscription)}, http.StatusCreated)
 }
 func (h SubscriptionsHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement me
-	panic("not implemented")
+	id, err := h.parseSubscriptionIDFromPath(r)
+	if err != nil {
+		h.errorResponse(w, fmt.Errorf("invalid subscription id: %w", err).Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	if err := h.Service.Delete(r.Context(), id); err != nil {
+		h.errorResponse(w, err.Error(), getStatusCode(err))
+		return
+	}
+	h.response(w, nil, http.StatusNoContent)
 }
 func (h SubscriptionsHandler) Update(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement me
-	panic("not implemented")
+	id, err := h.parseSubscriptionIDFromPath(r)
+	if err != nil {
+		h.errorResponse(w, fmt.Errorf("invalid subscription id: %w", err).Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	var subscriptionUpdate SubscriptionUpdateDTO
+	if err := json.NewDecoder(r.Body).Decode(&subscriptionUpdate); err != nil {
+		h.errorResponse(w, fmt.Errorf("decode json: %w", err).Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	sub, err := h.Service.Update(r.Context(), id, subscriptionUpdate)
+	if err != nil {
+		h.errorResponse(w, err.Error(), getStatusCode(err))
+		return
+	}
+	h.response(w, R{"subscription": SubscriptionToResponse(sub)}, http.StatusOK)
 }

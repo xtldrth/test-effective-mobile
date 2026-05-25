@@ -1,4 +1,4 @@
-module github.com/xtldrth/test-efmov-go
+module github.com/xtldrth/test-effective-mobile
 
 go 1.26
 

@@ -21,7 +21,7 @@ type SubscriptionsRepository interface {
 	GetPricesSum(ctx context.Context, userID uuid.UUID, serviceName string, from time.Time, to time.Time) (int, error)
 	Create(ctx context.Context, subscription Subscription) (Subscription, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	Update(ctx context.Context, id uuid.UUID, fieldValue map[string]any) (Subscription, error)
+	Update(ctx context.Context, id uuid.UUID, sub SubscriptionUpdateDTO) (Subscription, error)
 }
 
 var _ SubscriptionsRepository = (*postgresSubscriptionRepository)(nil)
@@ -95,7 +95,7 @@ func (r *postgresSubscriptionRepository) calculateSum(price int, startDate time.
 	if endDate != nil && endDate.Before(to) {
 		to = *endDate
 	}
-	month := int(to.Month()) - int(from.Month()) + 12*(to.Year()-from.Year())
+	month := int(to.Month()) - int(from.Month()) + 12*(to.Year()-from.Year()) + 1
 	return month * price
 }
 
@@ -104,11 +104,8 @@ func (r *postgresSubscriptionRepository) GetPricesSum(ctx context.Context, userI
 SELECT price, start_date, end_date
 FROM public.subscriptions
 WHERE user_id = @userID AND service_name = @serviceName 
-	AND (
-		start_date BETWEEN @fromDate AND @toDate 
-		OR 
-		end_date BETWEEN @fromDate AND @toDate
-	)
+	AND start_date <= @toDate
+	AND (end_date IS NULL OR end_date >= @fromDate)
 `
 	args := pgx.NamedArgs{"userID": userID, "serviceName": serviceName, "fromDate": from, "toDate": to}
 	rows, err := r.pool.Query(
@@ -155,8 +152,14 @@ RETURNING id, user_id, service_name, price, start_date, end_date`
 }
 
 func (r *postgresSubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, "DELETE FROM subscriptions WHERE id = $1", id)
-	return r.checkErr(err)
+	ct, err := r.pool.Exec(ctx, "DELETE FROM subscriptions WHERE id = $1", id)
+	if err != nil {
+		return r.checkErr(err)
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrNotFound{"subscription"}
+	}
+	return nil
 }
 
 func BuildUpdateQuery(id uuid.UUID, fieldValue map[string]any) (query string, args []any) {
@@ -186,7 +189,24 @@ func BuildUpdateQuery(id uuid.UUID, fieldValue map[string]any) (query string, ar
 	return sb.String(), args
 }
 
-func (r *postgresSubscriptionRepository) Update(ctx context.Context, id uuid.UUID, fieldValue map[string]any) (Subscription, error) {
+func addIfSet[T any](fieldValue map[string]any, field string, value Nullable[T]) {
+	if !value.IsSet() {
+		return
+	}
+	if value.IsNull() {
+		fieldValue[field] = nil
+		return
+	}
+	fieldValue[field] = value.GetValue()
+}
+
+func (r *postgresSubscriptionRepository) Update(ctx context.Context, id uuid.UUID, sub SubscriptionUpdateDTO) (Subscription, error) {
+	fieldValue := make(map[string]any)
+	addIfSet(fieldValue, "user_id", sub.UserID)
+	addIfSet(fieldValue, "service_name", sub.ServiceName)
+	addIfSet(fieldValue, "price", sub.Price)
+	addIfSet(fieldValue, "start_date", sub.StartDate)
+	addIfSet(fieldValue, "end_date", sub.EndDate)
 	query, args := BuildUpdateQuery(id, fieldValue)
 	if query == "" {
 		return Subscription{}, ErrValidation{Msg: "no field to update"}

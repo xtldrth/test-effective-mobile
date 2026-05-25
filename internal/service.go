@@ -117,17 +117,21 @@ func (s *subscriptionsService) GetPricesSum(ctx context.Context, userID uuid.UUI
 func (s *subscriptionsService) Create(ctx context.Context, subscription SubscriptionCreateDTO) (Subscription, error) {
 	var endDate *time.Time
 	if subscription.EndDate.IsSet() && !subscription.EndDate.IsNull() {
-		endDate = new(time.Time(subscription.EndDate.Value()))
+		endDate = new(time.Time(subscription.EndDate.GetValue()))
 	}
-	c, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
-	dbSubscription, err := s.repository.Create(c, Subscription{
+	newSubscription := Subscription{
 		UserID:      subscription.UserID,
 		ServiceName: subscription.ServiceName,
 		Price:       subscription.Price,
 		StartDate:   time.Time(subscription.StartDate),
 		EndDate:     endDate,
-	})
+	}
+	if err := newSubscription.Validate(); err != nil {
+		return Subscription{}, err
+	}
+	c, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+	dbSubscription, err := s.repository.Create(c, newSubscription)
 	if err != nil {
 		s.logger.Error(
 			"create",
@@ -156,29 +160,39 @@ func (s *subscriptionsService) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func addIfSet[T any](fieldValue map[string]any, field string, value Nullable[T]) {
-	if !value.IsSet() {
-		return
-	}
-	fieldValue[field] = value.Value()
+func (s *subscriptionsService) Validate() {
+
 }
 
 func (s *subscriptionsService) Update(ctx context.Context, id uuid.UUID, sub SubscriptionUpdateDTO) (Subscription, error) {
-	fieldValue := make(map[string]any)
-	addIfSet(fieldValue, "user_id", sub.UserID)
-	addIfSet(fieldValue, "service_name", sub.ServiceName)
-	addIfSet(fieldValue, "price", sub.Price)
-	addIfSet(fieldValue, "start_date", sub.StartDate)
-	addIfSet(fieldValue, "end_date", sub.EndDate)
+	if err := sub.Validate(); err != nil {
+		return Subscription{}, err
+	}
 	c, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
-	updatedSub, err := s.repository.Update(c, id, fieldValue)
+	dbSub, err := s.repository.GetByID(c, id)
+	if err != nil {
+		if _, ok := errors.AsType[ErrNotFound](err); ok {
+			return Subscription{}, err
+		}
+		s.logger.Error("getting user from repository", slog.String("error", err.Error()))
+		return Subscription{}, ErrInternal
+	}
+	if sub.StartDate.IsSet() && dbSub.EndDate != nil && dbSub.EndDate.After(time.Time(sub.StartDate.GetValue())) {
+		return Subscription{}, ErrValidation{Msg: "start date should be after end date"}
+	}
+	if sub.EndDate.IsSet() && !sub.EndDate.IsNull() && dbSub.StartDate.After(time.Time(sub.EndDate.GetValue())) {
+		return Subscription{}, ErrValidation{Msg: "end date should be before start date"}
+	}
+	c, cancel = context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+	updatedSub, err := s.repository.Update(c, id, sub)
 	if err != nil {
 		if _, ok := errors.AsType[ErrNotFound](err); ok {
 			return Subscription{}, err
 		}
 		s.logger.Error(
-			"delete",
+			"update",
 			slog.String("error", err.Error()),
 		)
 		return Subscription{}, ErrInternal
