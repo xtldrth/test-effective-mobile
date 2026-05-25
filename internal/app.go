@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/xtldrth/test-efmov-go/internal/config"
+	"github.com/xtldrth/test-effective-mobile/docs"
+	"github.com/xtldrth/test-effective-mobile/internal/config"
 )
 
 type App interface {
@@ -34,8 +35,8 @@ func setupDB(ctx context.Context, connStr string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-func NewApp(cfg config.Config, initTimeout time.Duration, logger *slog.Logger) (App, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
+func NewApp(cfg config.Config, logger *slog.Logger) (App, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.App.StartupTimeout)
 	defer cancel()
 	pool, err := setupDB(ctx, cfg.DB.ConnStr)
 	if err != nil {
@@ -45,11 +46,12 @@ func NewApp(cfg config.Config, initTimeout time.Duration, logger *slog.Logger) (
 	subscriptionsService := NewSubscriptionsService(
 		subscriptionsRepository,
 		cfg.App.SubscriptionsServiceTimeout,
-		logger.WithGroup("Subscriptions Service"),
+		logger.WithGroup("SubscriptionsService"),
 	)
-	subscriptionsHandler := NewSubscriptionsHandler(subscriptionsService, logger.WithGroup("Subscriptions Handler"))
+	subscriptionsHandler := NewSubscriptionsHandler(subscriptionsService, logger.WithGroup("SubscriptionsHandler"))
 	mux := http.NewServeMux()
 	RegisterSubscriptionsRoutes(mux, subscriptionsHandler)
+	docs.RegisterDocsRoutes(mux)
 	return app{
 		pool: pool,
 		server: &http.Server{

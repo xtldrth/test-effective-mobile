@@ -1,0 +1,298 @@
+openapi: 3.0.3
+info:
+  title: Subscriptions API
+  version: 1.0.0
+  description: API for managing user subscriptions.
+servers:
+  - url: /
+paths:
+  /api/subscriptions:
+    get:
+      summary: List subscriptions
+      description: Returns subscriptions for a user, optionally filtered by service name.
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+        - name: service_name
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Subscriptions list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionsListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Create subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionCreate"
+      responses:
+        "201":
+          description: Subscription created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponseWrapper"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/subscriptions/sum/:
+    get:
+      summary: Sum of subscription prices
+      description: Returns total spent for a user and service within a date range.
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+        - name: service_name
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/MonthYear"
+        - name: to
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/MonthYear"
+      responses:
+        "200":
+          description: Total spent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TotalSpentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/subscriptions/{id}/:
+    get:
+      summary: Get subscription by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+      responses:
+        "200":
+          description: Subscription found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponseWrapper"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/subscriptions/{id}:
+    delete:
+      summary: Delete subscription
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      summary: Update subscription
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionUpdate"
+      responses:
+        "200":
+          description: Updated subscription
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponseWrapper"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  schemas:
+    UUID:
+      type: string
+      format: uuid
+      example: 2f3a4c5d-6e7f-4890-9abc-1d2e3f4a5b6c
+    MonthYear:
+      type: string
+      description: Month-year in MM-YYYY format.
+      pattern: "^(0[1-9]|1[0-2])-[0-9]{4}$"
+      example: "05-2024"
+    SubscriptionResponse:
+      type: object
+      required:
+        - id
+        - user_id
+        - service_name
+        - price
+        - start_date
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        user_id:
+          $ref: "#/components/schemas/UUID"
+        service_name:
+          type: string
+        price:
+          type: integer
+          format: int32
+        start_date:
+          $ref: "#/components/schemas/MonthYear"
+        end_date:
+          $ref: "#/components/schemas/MonthYear"
+          nullable: true
+    SubscriptionCreate:
+      type: object
+      required:
+        - user_id
+        - service_name
+        - price
+        - start_date
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UUID"
+        service_name:
+          type: string
+        price:
+          type: integer
+          format: int32
+        start_date:
+          $ref: "#/components/schemas/MonthYear"
+        end_date:
+          $ref: "#/components/schemas/MonthYear"
+          nullable: true
+    SubscriptionUpdate:
+      type: object
+      description: All fields are optional; set a field to null to clear it.
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UUID"
+          nullable: true
+        service_name:
+          type: string
+          nullable: true
+        price:
+          type: integer
+          format: int32
+          nullable: true
+        start_date:
+          $ref: "#/components/schemas/MonthYear"
+          nullable: true
+        end_date:
+          $ref: "#/components/schemas/MonthYear"
+          nullable: true
+    SubscriptionResponseWrapper:
+      type: object
+      required:
+        - subscription
+      properties:
+        subscription:
+          $ref: "#/components/schemas/SubscriptionResponse"
+    SubscriptionsListResponse:
+      type: object
+      required:
+        - subscriptions
+      properties:
+        subscriptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubscriptionResponse"
+    TotalSpentResponse:
+      type: object
+      required:
+        - total_spent
+        - service_name
+        - user_id
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UUID"
+        service_name:
+          type: string
+        total_spent:
+          type: integer
+          format: int32
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unprocessable:
+      description: Unprocessable entity
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"

@@ -1,0 +1,7 @@
+db:
+  conn_str: "postgresql://postgres:postgres@localhost:5527/postgres"
+server:
+  addr: ":8080"
+app:
+  startup_timeout: 10s
+  subscriptions_service_timeout: 10s

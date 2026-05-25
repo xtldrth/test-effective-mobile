@@ -21,7 +21,8 @@ type Server struct {
 }
 
 type App struct {
-	SubscriptionsServiceTimeout time.Duration `yaml:"timeouts,omitempty"`
+	StartupTimeout              time.Duration `yaml:"startup_timeout"`
+	SubscriptionsServiceTimeout time.Duration `yaml:"subscriptions_service_timeout,omitempty"`
 }
 type Config struct {
 	DB     DB     `yaml:"db,omitempty"`
@@ -35,7 +36,7 @@ func DefaultConfig() Config {
 		Server: Server{
 			Addr: "127.0.0.1:8080",
 		},
-		App: App{SubscriptionsServiceTimeout: 10 * time.Second},
+		App: App{SubscriptionsServiceTimeout: 10 * time.Second, StartupTimeout: 10 * time.Second},
 	}
 }
 
